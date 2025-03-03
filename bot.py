@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 # Define your Telegram bot token (get this from @BotFather)
 TOKEN = "7746986488:AAFaNalzz7p78_rBPl8pscBtVVYIn2xZF24"
 
-# Base URL for your webapp - UPDATE THIS with your successful Vercel deployment URL
-BASE_WEBAPP_URL = "https://your-successful-vercel-url.vercel.app"
+# Base URL for your webapp - PROPERLY FORMATTED with https:// protocol
+BASE_WEBAPP_URL = "https://crazytesting.vercel.app"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message with buttons that open web apps."""
