@@ -23,7 +23,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     username = user.username or ""
     
     # Create webapp URL with user parameters
-    webapp_url = f"{BASE_WEBAPP_URL}?id={user_id}&username={username}"
+    webapp_url = f"{BASE_WEBAPP_URL}/?id={user_id}&username={username}"
     
     # Using WebApp with user params in URL
     keyboard = [

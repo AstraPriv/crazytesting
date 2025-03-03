@@ -3,7 +3,6 @@ import json
 import urllib.parse
 import traceback
 import sqlite3
-import os
 import secrets
 import hashlib
 
@@ -12,7 +11,7 @@ WALLET_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Your Solana Wallet</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
@@ -112,16 +111,12 @@ WALLET_HTML = """<!DOCTYPE html>
     <script>
         // Initialize Telegram WebApp
         const tg = window.Telegram.WebApp;
+        tg.ready();
         tg.expand();
         
         // Close button handler
         document.getElementById('closeButton').addEventListener('click', function() {
             tg.close();
-        });
-        
-        // Notify Telegram WebApp when the page is fully loaded
-        window.addEventListener('load', function() {
-            tg.ready();
         });
     </script>
 </body>
@@ -132,7 +127,7 @@ ERROR_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Error</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
@@ -190,16 +185,12 @@ ERROR_HTML = """<!DOCTYPE html>
     <script>
         // Initialize Telegram WebApp
         const tg = window.Telegram.WebApp;
+        tg.ready();
         tg.expand();
         
         // Close button handler
         document.getElementById('closeButton').addEventListener('click', function() {
             tg.close();
-        });
-        
-        // Notify Telegram WebApp when the page is fully loaded
-        window.addEventListener('load', function() {
-            tg.ready();
         });
     </script>
 </body>
@@ -250,7 +241,7 @@ class handler(BaseHTTPRequestHandler):
             path = parsed_path.path
             query_params = dict(urllib.parse.parse_qsl(parsed_path.query))
             
-            # Debug endpoint - returns JSON data
+            # Debug endpoint
             if path == '/api/debug':
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
@@ -262,30 +253,17 @@ class handler(BaseHTTPRequestHandler):
                 }).encode())
                 return
                 
-            # Response format control - allow JSON for debugging
-            format_type = query_params.get('format', 'html')
-            
             # Get telegram ID and username
             telegram_id = query_params.get('id')
             telegram_username = query_params.get('username', 'User')
             
             # If no ID provided, return error
             if not telegram_id:
-                if format_type == 'json':
-                    self.send_response(400)
-                    self.send_header('Content-type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({
-                        "status": "error",
-                        "message": "No user ID provided"
-                    }).encode())
-                    return
-                else:
-                    self.send_response(200)
-                    self.send_header('Content-type', 'text/html')
-                    self.end_headers()
-                    self.wfile.write(ERROR_HTML.format(message="No user ID provided").encode())
-                    return
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.end_headers()
+                self.wfile.write(ERROR_HTML.format(message="No user ID provided").encode())
+                return
             
             # Connect to database
             conn = get_db_connection()
@@ -312,74 +290,35 @@ class handler(BaseHTTPRequestHandler):
             # Get wallet balance
             balance = get_solana_balance(user_result['wallet_public_key'])
             
-            # Prepare response data
-            response_data = {
-                "username": telegram_username,
-                "wallet_address": user_result['wallet_public_key'],
-                "balance": balance
-            }
-            
             # Close database connection
             conn.close()
             
-            # Return response based on format
-            if format_type == 'json':
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    "status": "success",
-                    "data": response_data
-                }).encode())
-                return
-            else:
-                # Return HTML response
-                self.send_response(200)
-                self.send_header('Content-type', 'text/html')
-                self.end_headers()
-                
-                # Format the HTML with user data
-                html_content = WALLET_HTML.format(
-                    username=telegram_username,
-                    wallet_address=user_result['wallet_public_key'],
-                    balance=balance
-                )
-                
-                self.wfile.write(html_content.encode())
-                return
+            # Return HTML response
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            
+            # Format the HTML with user data
+            html_content = WALLET_HTML.format(
+                username=telegram_username,
+                wallet_address=user_result['wallet_public_key'],
+                balance=balance
+            )
+            
+            self.wfile.write(html_content.encode())
+            return
                 
         except Exception as e:
-            # Get error details
+            # Log error
             error_type = type(e).__name__
             error_msg = str(e)
             error_traceback = traceback.format_exc()
-            
-            # Log error for debugging
             print(f"Error: {error_type} - {error_msg}")
             print(error_traceback)
             
             # Return error response
-            format_type = 'html'
-            try:
-                parsed_path = urllib.parse.urlparse(self.path)
-                query_params = dict(urllib.parse.parse_qsl(parsed_path.query))
-                format_type = query_params.get('format', 'html')
-            except:
-                pass
-                
-            if format_type == 'json':
-                self.send_response(500)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    "status": "error",
-                    "message": error_msg,
-                    "error_type": error_type
-                }).encode())
-                return
-            else:
-                self.send_response(200)  # Using 200 for HTML errors to ensure they display in Telegram
-                self.send_header('Content-type', 'text/html')
-                self.end_headers()
-                self.wfile.write(ERROR_HTML.format(message=f"Error: {error_msg}").encode())
-                return
+            self.send_response(200)  # Using 200 for Telegram
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(ERROR_HTML.format(message=f"Error: {error_msg}").encode())
+            return
