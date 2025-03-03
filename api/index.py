@@ -1,12 +1,11 @@
-from http.server import BaseHTTPRequestHandler
-import json
-import urllib.parse
-import traceback
+from flask import Flask, request, render_template, jsonify, Response
 import sqlite3
+import os
 import secrets
 import hashlib
+import json
 
-# HTML template for wallet display
+# HTML template for wallet display when templates are not accessible
 WALLET_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,7 +18,47 @@ WALLET_HTML = """<!DOCTYPE html>
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 16px;
-            background-color: #1e1e2e;
+            background-color: #7aa2f7;
+            border: none;
+            color: white;
+            padding: 12px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 6px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #5d87e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="error-icon">⚠️</div>
+        <h1>Error</h1>
+        <div class="error-message">{message}</div>
+        <button id="closeButton">Close</button>
+    </div>
+
+    <script>
+        // Initialize Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        // Close button handler
+        document.getElementById('closeButton').addEventListener('click', function() {
+            tg.close();
+        });
+    </script>
+</body>
+</html>"""
+
+app = Flask(__name__, template_folder="../templates")1e1e2e;
             color: #ffffff;
         }
         .container {
@@ -156,45 +195,7 @@ ERROR_HTML = """<!DOCTYPE html>
             margin-bottom: 30px;
         }
         button {
-            background-color: #7aa2f7;
-            border: none;
-            color: white;
-            padding: 12px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 6px;
-            width: 100%;
-        }
-        button:hover {
-            background-color: #5d87e0;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="error-icon">⚠️</div>
-        <h1>Error</h1>
-        <div class="error-message">{message}</div>
-        <button id="closeButton">Close</button>
-    </div>
-
-    <script>
-        // Initialize Telegram WebApp
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-        
-        // Close button handler
-        document.getElementById('closeButton').addEventListener('click', function() {
-            tg.close();
-        });
-    </script>
-</body>
-</html>"""
+            background-color: #
 
 # Database setup
 def get_db_connection():
@@ -216,7 +217,9 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
-    return True
+
+# Initialize database
+init_db()
 
 # Simple Solana wallet creation
 def create_solana_wallet():
@@ -229,96 +232,54 @@ def create_solana_wallet():
 def get_solana_balance(public_key):
     return 0.05  # Demo value
 
-# Initialize database
-init_db()
-
-# Handler class
-class handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        try:
-            # Parse the URL and query parameters
-            parsed_path = urllib.parse.urlparse(self.path)
-            path = parsed_path.path
-            query_params = dict(urllib.parse.parse_qsl(parsed_path.query))
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def catch_all(path):
+    # Get user parameters from query string
+    telegram_id = request.args.get('id')
+    telegram_username = request.args.get('username', '')
+    
+    if not telegram_id:
+        return render_template('error.html', message="No user ID provided")
+    
+    try:
+        # Check if user exists in database
+        conn = get_db_connection()
+        user = conn.execute('SELECT * FROM users WHERE telegram_id = ?', 
+                          (telegram_id,)).fetchone()
+        
+        # If user doesn't exist, create wallet and add to database
+        if not user:
+            public_key, private_key = create_solana_wallet()
             
-            # Debug endpoint
-            if path == '/api/debug':
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    "status": "ok",
-                    "message": "Handler is working",
-                    "query_params": query_params
-                }).encode())
-                return
-                
-            # Get telegram ID and username
-            telegram_id = query_params.get('id')
-            telegram_username = query_params.get('username', 'User')
-            
-            # If no ID provided, return error
-            if not telegram_id:
-                self.send_response(200)
-                self.send_header('Content-type', 'text/html')
-                self.end_headers()
-                self.wfile.write(ERROR_HTML.format(message="No user ID provided").encode())
-                return
-            
-            # Connect to database
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            # Check if user exists in database
-            cursor.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
-            user_result = cursor.fetchone()
-            
-            # Create wallet if user doesn't exist
-            if not user_result:
-                public_key, private_key = create_solana_wallet()
-                
-                cursor.execute(
-                    'INSERT INTO users (telegram_id, telegram_username, wallet_public_key, wallet_private_key) VALUES (?, ?, ?, ?)',
-                    (telegram_id, telegram_username, public_key, private_key)
-                )
-                conn.commit()
-                
-                # Fetch the newly created user
-                cursor.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
-                user_result = cursor.fetchone()
-            
-            # Get wallet balance
-            balance = get_solana_balance(user_result['wallet_public_key'])
-            
-            # Close database connection
-            conn.close()
-            
-            # Return HTML response
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            
-            # Format the HTML with user data
-            html_content = WALLET_HTML.format(
-                username=telegram_username,
-                wallet_address=user_result['wallet_public_key'],
-                balance=balance
+            conn.execute(
+                'INSERT INTO users (telegram_id, telegram_username, wallet_public_key, wallet_private_key) VALUES (?, ?, ?, ?)',
+                (telegram_id, telegram_username, public_key, private_key)
             )
+            conn.commit()
             
-            self.wfile.write(html_content.encode())
-            return
-                
-        except Exception as e:
-            # Log error
-            error_type = type(e).__name__
-            error_msg = str(e)
-            error_traceback = traceback.format_exc()
-            print(f"Error: {error_type} - {error_msg}")
-            print(error_traceback)
-            
-            # Return error response
-            self.send_response(200)  # Using 200 for Telegram
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(ERROR_HTML.format(message=f"Error: {error_msg}").encode())
-            return
+            # Fetch the newly created user
+            user = conn.execute('SELECT * FROM users WHERE telegram_id = ?', 
+                              (telegram_id,)).fetchone()
+        
+        # Get wallet balance
+        balance = get_solana_balance(user['wallet_public_key'])
+        
+        conn.close()
+        
+        # Render template with user data
+        return render_template('wallet.html', 
+                               username=telegram_username or "User",
+                               wallet_address=user['wallet_public_key'],
+                               balance=balance)
+    
+    except Exception as e:
+        return render_template('error.html', message=f"Error: {str(e)}")
+
+# Vercel serverless function handler
+def handler(event, context):
+    """Adapter for Vercel Serverless"""
+    return app(event, context)
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
