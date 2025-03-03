@@ -1,98 +1,67 @@
-from flask import Flask, request, jsonify, render_template
+from http.server import BaseHTTPRequestHandler
+from flask import Flask, request, jsonify, Response
+import urllib.parse
+import io
+import sys
 import os
-import sqlite3
-import secrets
-import hashlib
 
-# Initialize Flask app at module level - THIS IS CRITICAL FOR VERCEL
+# Create Flask app
 app = Flask(__name__, 
             template_folder=os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'templates')))
 
-# Database setup
-def get_db_connection():
-    conn = sqlite3.connect('/tmp/telegram_solana.db')
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    conn = get_db_connection()
-    conn.execute('''
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id TEXT UNIQUE,
-        telegram_username TEXT,
-        wallet_public_key TEXT,
-        wallet_private_key TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    ''')
-    conn.commit()
-    conn.close()
-
-# Simple Solana wallet creation
-def create_solana_wallet():
-    private_key = secrets.token_bytes(32)
-    private_key_hex = private_key.hex()
-    public_key = "So" + hashlib.sha256(private_key).hexdigest()[:32]
-    return public_key, private_key_hex
-
-# Get Solana balance
-def get_solana_balance(public_key):
-    return 0.05  # Demo value
-
-# Initialize database at module level
-init_db()
-
-# Health check endpoint
+# Define Flask routes and functionality
 @app.route('/api/health')
 def health_check():
     return jsonify({"status": "ok"})
 
-# Main route handler
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def handler(path):
-    try:
-        # Get user parameters from query string
-        telegram_id = request.args.get('id')
-        telegram_username = request.args.get('username', '')
-        
-        if not telegram_id:
-            return render_template('error.html', message="No user ID provided")
-        
-        # Check if user exists in database
-        conn = get_db_connection()
-        user = conn.execute('SELECT * FROM users WHERE telegram_id = ?', 
-                          (telegram_id,)).fetchone()
-        
-        # If user doesn't exist, create wallet and add to database
-        if not user:
-            public_key, private_key = create_solana_wallet()
-            
-            conn.execute(
-                'INSERT INTO users (telegram_id, telegram_username, wallet_public_key, wallet_private_key) VALUES (?, ?, ?, ?)',
-                (telegram_id, telegram_username, public_key, private_key)
-            )
-            conn.commit()
-            
-            # Fetch the newly created user
-            user = conn.execute('SELECT * FROM users WHERE telegram_id = ?', 
-                              (telegram_id,)).fetchone()
-        
-        # Get wallet balance
-        balance = get_solana_balance(user['wallet_public_key'])
-        
-        conn.close()
-        
-        # Render template with user data
-        return render_template('wallet.html', 
-                               username=telegram_username or "User",
-                               wallet_address=user['wallet_public_key'],
-                               balance=balance)
-    
-    except Exception as e:
-        return render_template('error.html', message=f"Error: {str(e)}")
+@app.route('/')
+def home():
+    return jsonify({
+        "message": "Solana Wallet API is running",
+        "instructions": "Use with Telegram Bot"
+    })
 
-# This is required for Vercel - DO NOT REMOVE
-if __name__ == '__main__':
-    app.run(debug=True)
+# This is the handler class that Vercel expects
+class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        # Capture flask's response
+        env = {
+            'wsgi.input': io.BytesIO(),
+            'wsgi.errors': sys.stderr,
+            'wsgi.version': (1, 0),
+            'wsgi.multithread': False,
+            'wsgi.multiprocess': False,
+            'wsgi.run_once': False,
+            'SERVER_SOFTWARE': 'Vercel',
+            'REQUEST_METHOD': self.command,
+            'PATH_INFO': self.path.split('?')[0],
+            'QUERY_STRING': self.path.split('?')[1] if '?' in self.path else '',
+            'SERVER_PROTOCOL': self.request_version,
+            'wsgi.url_scheme': 'https'
+        }
+        
+        # Add headers to the environment
+        for header in self.headers:
+            key = header.upper().replace('-', '_')
+            if key not in ('CONTENT_TYPE', 'CONTENT_LENGTH'):
+                key = 'HTTP_' + key
+            env[key] = self.headers[header]
+            
+        # Create a response container
+        response_body = []
+        
+        def start_response(status, headers):
+            self.send_response(int(status.split()[0]))
+            for header, value in headers:
+                self.send_header(header, value)
+            self.end_headers()
+            return response_body.append
+            
+        # Pass the request to Flask
+        response = app(env, start_response)
+        
+        # Write the response
+        for data in response:
+            self.wfile.write(data)
+            
+        return
