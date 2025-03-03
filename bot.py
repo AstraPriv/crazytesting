@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # Define your Telegram bot token (get this from @BotFather)
 TOKEN = "7746986488:AAFaNalzz7p78_rBPl8pscBtVVYIn2xZF24"
 
-# Base URL for your webapp - PROPERLY FORMATTED with https:// protocol
+# Base URL for your webapp - UPDATE THIS with your Vercel deployment URL
 BASE_WEBAPP_URL = "https://crazytesting.vercel.app"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -23,7 +23,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     username = user.username or ""
     
     # Create webapp URL with user parameters
-    webapp_url = f"{BASE_WEBAPP_URL}/?id={user_id}&username={username}"
+    webapp_url = f"{BASE_WEBAPP_URL}?id={user_id}&username={username}"
     
     # Using WebApp with user params in URL
     keyboard = [
