@@ -3,11 +3,8 @@ import secrets
 import hashlib
 import os
 from datetime import datetime
+import json
 
-# In-memory database (for demo only)
-DB = {}
-
-# Create Flask app
 app = Flask(__name__)
 
 # HTML templates as strings (since Vercel has issues with template directories)
@@ -237,13 +234,18 @@ def get_solana_balance(public_key):
     # For demo, return a fixed value
     return 0.05  # 0.05 SOL
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def catch_all(path):
+# Handler for serverless function
+@app.route('/', defaults={'path': ''}, methods=['GET', 'POST'])
+@app.route('/<path:path>', methods=['GET', 'POST'])
+def handler(path):
     try:
         # Log request info (helpful for debugging)
         print(f"Request received: {request.url}")
         print(f"Query parameters: {request.args}")
+        
+        # For health check endpoint
+        if path == 'health':
+            return jsonify({"status": "ok", "timestamp": datetime.now().isoformat()})
         
         # Get user parameters from query string
         telegram_id = request.args.get('id')
@@ -252,11 +254,16 @@ def catch_all(path):
         if not telegram_id:
             return render_template_string(ERROR_TEMPLATE, message="No user ID provided")
         
-        # Check if user exists in database
-        user = DB.get(telegram_id)
+        # In-memory storage (not persistent across function calls, but works for demo)
+        # In production, you would use a database service
+        user_wallets = {}
         
-        # If user doesn't exist, create wallet and add to database
-        if not user:
+        # Check if user exists in database
+        if telegram_id in user_wallets:
+            user = user_wallets[telegram_id]
+            print(f"Retrieved existing wallet for user {telegram_id}")
+        else:
+            # Create new wallet
             public_key, private_key = create_solana_wallet()
             
             user = {
@@ -266,10 +273,8 @@ def catch_all(path):
                 'wallet_private_key': private_key,
                 'created_at': datetime.now().isoformat()
             }
-            DB[telegram_id] = user
+            user_wallets[telegram_id] = user
             print(f"Created new wallet for user {telegram_id}")
-        else:
-            print(f"Retrieved existing wallet for user {telegram_id}")
         
         # Get wallet balance
         balance = get_solana_balance(user['wallet_public_key'])
@@ -286,11 +291,6 @@ def catch_all(path):
         print(f"Error: {str(e)}")
         return render_template_string(ERROR_TEMPLATE, message=f"Error: {str(e)}")
 
-# Simple health check endpoint
-@app.route('/health')
-def health_check():
-    return jsonify({"status": "ok", "timestamp": datetime.now().isoformat()})
-
-# For local development
-if __name__ == '__main__':
-    app.run(debug=True)
+# For Vercel serverless functions
+def app_handler(req, res):
+    return app(req, res)

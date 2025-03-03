@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 # Define your Telegram bot token (get this from @BotFather)
 TOKEN = "7746986488:AAFaNalzz7p78_rBPl8pscBtVVYIn2xZF24"
 
-# Base URL for your webapp - change this to your actual hosted domain
-# For testing, you can use ngrok: e.g., "https://abc123.ngrok.io"
-BASE_WEBAPP_URL = "https://your-domain.com"  # Replace with your actual domain
+# Base URL for your webapp - REPLACE THIS with your Vercel deployment URL
+# For example: "https://your-app-name.vercel.app"
+BASE_WEBAPP_URL = "https://your-vercel-deployment-url.vercel.app"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message with buttons that open web apps."""
@@ -37,20 +37,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Check if image exists
-    if os.path.isfile("wallet_start.jpg"):
-        # Send the image with caption and buttons
-        await update.message.reply_photo(
-            photo=open("wallet_start.jpg", "rb"),
-            caption="Welcome to your Solana Wallet! Click below to view your wallet:",
-            reply_markup=reply_markup
-        )
-    else:
-        # Fallback if image doesn't exist
-        await update.message.reply_text(
-            "Welcome to your Solana Wallet! Click below to view your wallet:", 
-            reply_markup=reply_markup
-        )
+    # Since we can't rely on local files in a Telegram bot deployment,
+    # just send text response
+    await update.message.reply_text(
+        "Welcome to your Solana Wallet! Click below to view your wallet:", 
+        reply_markup=reply_markup
+    )
 
 def main() -> None:
     """Start the bot."""
