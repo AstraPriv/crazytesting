@@ -12,9 +12,8 @@ logger = logging.getLogger(__name__)
 # Define your Telegram bot token (get this from @BotFather)
 TOKEN = "7746986488:AAFaNalzz7p78_rBPl8pscBtVVYIn2xZF24"
 
-# Base URL for your webapp - REPLACE THIS with your Vercel deployment URL
-# For example: "https://your-app-name.vercel.app"
-BASE_WEBAPP_URL = "https://your-vercel-deployment-url.vercel.app"
+# Base URL for your webapp - UPDATE THIS with your successful Vercel deployment URL
+BASE_WEBAPP_URL = "https://your-successful-vercel-url.vercel.app"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message with buttons that open web apps."""
@@ -37,8 +36,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Since we can't rely on local files in a Telegram bot deployment,
-    # just send text response
     await update.message.reply_text(
         "Welcome to your Solana Wallet! Click below to view your wallet:", 
         reply_markup=reply_markup
