@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 16px;
+            background-color: #1e1e2e;
+            color: #ffffff;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #2d2d3f;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+        .error-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            color: #f7768e;
+        }
+        .error-message {
+            margin-bottom: 30px;
+        }
+        button {
+            background-color: #7aa2f7;
+            border: none;
+            color: white;
+            padding: 12px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 6px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #5d87e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="error-icon">⚠️</div>
+        <h1>Error</h1>
+        <div class="error-message">{{ message }}</div>
+        <button id="closeButton">Close</button>
+    </div>
+
+    <script>
+        // Initialize Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        // Close button handler
+        document.getElementById('closeButton').addEventListener('click', function() {
+            tg.close();
+        });
+        
+        // Notify Telegram WebApp when the page is fully loaded
+        window.addEventListener('load', function() {
+            tg.ready();
+        });
+    </script>
+</body>
+</html>
