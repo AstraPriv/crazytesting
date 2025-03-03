@@ -1,11 +1,12 @@
-from flask import Flask, request, render_template, jsonify, Response
+import json
+import urllib.parse
+import traceback
 import sqlite3
-import os
 import secrets
 import hashlib
-import json
+from http.server import BaseHTTPRequestHandler
 
-# HTML template for wallet display when templates are not accessible
+# HTML template for wallet display
 WALLET_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -18,47 +19,7 @@ WALLET_HTML = """<!DOCTYPE html>
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 16px;
-            background-color: #7aa2f7;
-            border: none;
-            color: white;
-            padding: 12px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 6px;
-            width: 100%;
-        }
-        button:hover {
-            background-color: #5d87e0;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="error-icon">⚠️</div>
-        <h1>Error</h1>
-        <div class="error-message">{message}</div>
-        <button id="closeButton">Close</button>
-    </div>
-
-    <script>
-        // Initialize Telegram WebApp
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-        
-        // Close button handler
-        document.getElementById('closeButton').addEventListener('click', function() {
-            tg.close();
-        });
-    </script>
-</body>
-</html>"""
-
-app = Flask(__name__, template_folder="../templates")1e1e2e;
+            background-color: #1e1e2e;
             color: #ffffff;
         }
         .container {
@@ -195,7 +156,45 @@ ERROR_HTML = """<!DOCTYPE html>
             margin-bottom: 30px;
         }
         button {
-            background-color: #
+            background-color: #7aa2f7;
+            border: none;
+            color: white;
+            padding: 12px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 6px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #5d87e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="error-icon">⚠️</div>
+        <h1>Error</h1>
+        <div class="error-message">{message}</div>
+        <button id="closeButton">Close</button>
+    </div>
+
+    <script>
+        // Initialize Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        // Close button handler
+        document.getElementById('closeButton').addEventListener('click', function() {
+            tg.close();
+        });
+    </script>
+</body>
+</html>"""
 
 # Database setup
 def get_db_connection():
@@ -217,9 +216,7 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
-
-# Initialize database
-init_db()
+    return True
 
 # Simple Solana wallet creation
 def create_solana_wallet():
@@ -232,54 +229,141 @@ def create_solana_wallet():
 def get_solana_balance(public_key):
     return 0.05  # Demo value
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def catch_all(path):
-    # Get user parameters from query string
-    telegram_id = request.args.get('id')
-    telegram_username = request.args.get('username', '')
+# Initialize database on module load
+init_db()
+
+# Main handler for Vercel serverless function
+def handler(event, context):
+    """
+    This is the main handler function that Vercel will call.
+    """
+    # Parse the URL parameters
+    path = event.get('path', '/')
     
-    if not telegram_id:
-        return render_template('error.html', message="No user ID provided")
-    
-    try:
-        # Check if user exists in database
-        conn = get_db_connection()
-        user = conn.execute('SELECT * FROM users WHERE telegram_id = ?', 
-                          (telegram_id,)).fetchone()
+    # Get query parameters
+    query_params = {}
+    if 'query' in event:
+        query_params = dict(urllib.parse.parse_qsl(event['query']))
+    elif 'queryStringParameters' in event and event['queryStringParameters']:
+        query_params = event['queryStringParameters']
         
-        # If user doesn't exist, create wallet and add to database
-        if not user:
+    try:
+        # Debug endpoint
+        if path == '/api/debug':
+            return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({
+                    "status": "ok",
+                    "message": "Handler is working",
+                    "query_params": query_params,
+                    "event": event
+                })
+            }
+        
+        # Get telegram ID and username
+        telegram_id = query_params.get('id')
+        telegram_username = query_params.get('username', 'User')
+        
+        # If no ID provided, return error
+        if not telegram_id:
+            return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'text/html'},
+                'body': ERROR_HTML.format(message="No user ID provided")
+            }
+        
+        # Connect to database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if user exists in database
+        cursor.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
+        user_result = cursor.fetchone()
+        
+        # Create wallet if user doesn't exist
+        if not user_result:
             public_key, private_key = create_solana_wallet()
             
-            conn.execute(
+            cursor.execute(
                 'INSERT INTO users (telegram_id, telegram_username, wallet_public_key, wallet_private_key) VALUES (?, ?, ?, ?)',
                 (telegram_id, telegram_username, public_key, private_key)
             )
             conn.commit()
             
             # Fetch the newly created user
-            user = conn.execute('SELECT * FROM users WHERE telegram_id = ?', 
-                              (telegram_id,)).fetchone()
+            cursor.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
+            user_result = cursor.fetchone()
         
         # Get wallet balance
-        balance = get_solana_balance(user['wallet_public_key'])
+        balance = get_solana_balance(user_result['wallet_public_key'])
         
+        # Close database connection
         conn.close()
         
-        # Render template with user data
-        return render_template('wallet.html', 
-                               username=telegram_username or "User",
-                               wallet_address=user['wallet_public_key'],
-                               balance=balance)
-    
+        # Format the HTML with user data
+        html_content = WALLET_HTML.format(
+            username=telegram_username,
+            wallet_address=user_result['wallet_public_key'],
+            balance=balance
+        )
+        
+        return {
+            'statusCode': 200,
+            'headers': {'Content-Type': 'text/html'},
+            'body': html_content
+        }
+                
     except Exception as e:
-        return render_template('error.html', message=f"Error: {str(e)}")
+        # Log error
+        error_type = type(e).__name__
+        error_msg = str(e)
+        error_traceback = traceback.format_exc()
+        print(f"Error: {error_type} - {error_msg}")
+        print(error_traceback)
+        
+        return {
+            'statusCode': 200,  # Using 200 for Telegram
+            'headers': {'Content-Type': 'text/html'},
+            'body': ERROR_HTML.format(message=f"Error: {error_msg}")
+        }
 
-# Vercel serverless function handler
-def handler(event, context):
-    """Adapter for Vercel Serverless"""
-    return app(event, context)
+# Compatibility with different serverless environments
+def main(req, res):
+    """Standard HTTP function for Vercel"""
+    response = handler(req, res)
+    return response
+    
+# AWS Lambda compatibility
+def lambda_handler(event, context):
+    """AWS Lambda handler"""
+    return handler(event, context)
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+# Default export for Vercel
+export_handler = handler
+
+# HTTP handler class for local testing or alternative hosting
+class VercelHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        # Parse URL
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+        query_string = parsed_url.query
+        
+        # Create request object in the format expected by handler
+        request = {
+            'path': path,
+            'query': query_string
+        }
+        
+        # Call the handler function
+        response = handler(request, None)
+        
+        # Set status code and headers
+        self.send_response(response.get('statusCode', 200))
+        for name, value in response.get('headers', {}).items():
+            self.send_header(name, value)
+        self.end_headers()
+        
+        # Send response body
+        self.wfile.write(response.get('body', '').encode())
